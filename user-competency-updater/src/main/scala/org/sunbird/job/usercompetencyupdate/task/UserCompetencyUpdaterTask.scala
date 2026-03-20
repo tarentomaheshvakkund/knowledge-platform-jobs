@@ -20,7 +20,7 @@ class UserCompetencyPreUpdaterTask(config: UserCompetencyUpdaterConfig, kafkaCon
     def process(): Unit = {
         // For local IDE execution, use local Flink environment
         import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-        implicit val env: StreamExecutionEnvironment = StreamExecutionEnvironment.createLocalEnvironment()
+        implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
         implicit val eventTypeInfo: TypeInformation[Event] = TypeExtractor.getForClass(classOf[Event])
         implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
         val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)
@@ -33,7 +33,8 @@ class UserCompetencyPreUpdaterTask(config: UserCompetencyUpdaterConfig, kafkaCon
               .process(new UserCompetencyPreProcessorFn(config, httpUtil))
               .name("user-competency-updater").uid("user-competency-updater")
               .setParallelism(config.parallelism)
-        // Remove all old side outputs and sinks
+        progressStream.getSideOutput(config.generateCompetencyFailedOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaFailedTopic))
+          .name(config.generateCompetencyFailedEventProducer).uid(config.generateCompetencyFailedEventProducer).setParallelism(config.generateCompetencyParallelism)
         env.execute(config.jobName)
     }
 }
